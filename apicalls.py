@@ -8,7 +8,7 @@ from utils import align, merge, remove_range, print_cols, get_string
 
 class WinApiCalls(object):
 
-    def __init__(self, base_addr, virtualmemorysize, hook_addr, breakpoints, sample):
+    def __init__(self, base_addr, virtualmemorysize, hook_addr, breakpoints, sample, atn, ntp):
         self.apicall_mapping = {
             "GetActiveWindow": self.GetActiveWindow,
             "GetLastActivePopup": self.GetLastActivePopup,
@@ -44,6 +44,8 @@ class WinApiCalls(object):
         self.sample = sample
         self.heaps = {}
         self.next_heap_handle = self.hook_addr + 0x10000
+        self.atn = atn
+        self.ntp = ntp
 
     def apicall(self, name, uc, esp, log):
         return self.apicall_mapping[name](uc, esp, log)
@@ -57,6 +59,20 @@ class WinApiCalls(object):
         eip, address, size, new_protect, old_protect_ptr = struct.unpack("<IIIII", uc.mem_read(esp, 20))
         log and print(f"VirtualProtect: address 0x{address:02x}, size 0x{size:02x}, mode 0x{new_protect:02x}, "
                       f"write old mode to 0x{old_protect_ptr:02x}")
+        memory_protection = {  # Tupel Format: (Execute, Read, Write)
+            0x01: (False, False, False),  # 0x01 PAGE_NOACCESS
+            0x02: (False, True, False),  # 0x02 PAGE_READONLY
+            0x04: (False, True, True),  # 0x04 PAGE_READWRITE
+            0x08: (False, True, True),  # 0x08 PAGE_WRITECOPY
+            0x10: (True, False, False),  # 0x10 PAGE_EXECUTE
+            0x20: (True, True, False),  # 0x20 PAGE_EXECUTE_READ
+            0x40: (True, True, True),  # 0x40 PAGE_EXECUTE_READWRITE
+            0x80: (True, True, True),  # 0x80 PAGE_EXECUTE_WRITECOPY
+        }
+        for saddr, eaddr in self.atn.keys():
+            if saddr <= address <= eaddr and new_protect in memory_protection:
+                name = self.atn[(saddr, eaddr)]
+                self.ntp[name] = memory_protection[new_protect]
         uc.mem_write(esp + 16, struct.pack("<I", eip))
         return new_protect, esp + 16
 
