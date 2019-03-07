@@ -3,20 +3,20 @@ import re
 import struct
 import sys
 import threading
-import yara
 from cmd import Cmd
 from random import choice
 from time import sleep, time
 
 import pefile
 import r2pipe
+import yara
 from unicorn import *
 from unicorn.x86_const import *
 
 from apicalls import WinApiCalls
 from kernel_structs import TEB, PEB, PEB_LDR_DATA, LIST_ENTRY
 from unpackers import get_unpacker
-from utils import print_cols, merge, align, remove_range, get_string, fix_ep, dump_image
+from utils import print_cols, merge, align, remove_range, get_string
 
 imports = set()
 mu = None
@@ -198,7 +198,7 @@ data at the right offsets.
 Stack space and memory not belonging to the image address space is not dumped."""
         try:
             args = args or "unpacked.exe"
-            dump_image(mu, BASE_ADDR, virtualmemorysize, apicall_handler.ntp, args)
+            unpacker.dump(mu, apicall_handler.ntp, path=args)
         except OSError as e:
             print(f"Error dumping to {args}: {e}")
 
@@ -445,28 +445,6 @@ deleted this time."""
             mem_breakpoints = list(merge(new_mem_breakpoints))
             self.print_breakpoints()
 
-    def do_fix(self, args):
-        """Fix the entry point in the sample's PE header
-
-Usage:          fix [!]<addr>
-The base address is subtracted from the provided address, in order to point to the correct physical entry point.
-In order to stop this from happening, prepend the address with an exclamation mark"""
-        if not args:
-            print("Please provide the desired entry point address")
-            return
-        subtract_base = "!" != args[0]
-        addr = args[1:] if subtract_base else args
-        try:
-            new_ep = int(addr, 0)
-            if subtract_base:
-                if new_ep < BASE_ADDR:
-                    print(f"Error: 0x{new_ep:02x} is smaller than the base address (0x{BASE_ADDR:02x})")
-                    return
-                new_ep -= BASE_ADDR
-            fix_ep(mu, new_ep, BASE_ADDR)
-        except ValueError:
-            print(f"Error parsing address {args}")
-
     def do_log(self, args):
         """Set logging level
 
@@ -514,8 +492,8 @@ details on this representation)"""
                     print("\x1b[31mError: malwrsig.yar not found!\x1b[0m")
         else:
             self.rules = yara.compile(filepath=args)
-        dump_image(mu, BASE_ADDR, virtualmemorysize, apicall_handler.ntp, "unpacked.dump")
-        matches = self.rules.match("unpacked.dump")
+        unpacker.dump(mu, apicall_handler.ntp)
+        matches = self.rules.match("unpacked.exe")
         print(", ".join(map(str, matches)))
 
     def do_exit(self, args):
@@ -665,18 +643,18 @@ def hook_code(uc, address, size, user_data):
         pause_emu()
     if address == endaddr:
         print("\x1b[31mEnd address hit! Unpacking should be done\x1b[0m")
-        unpacker.finish(uc, address)
+        unpacker.dump(uc, apicall_handler.ntp)
         pause_emu()
 
     if write_execute_control and address not in apicall_handler.hooks and (
             address < HOOK_ADDR or address > HOOK_ADDR + 0x1000):
         if any(lower <= address <= upper for (lower, upper) in sorted(write_targets)):
             print(f"\x1b[31mTrying to execute at 0x{address:02x}, which has been written to before!\x1b[0m")
-            unpacker.finish(uc, address)
+            unpacker.dump(uc, apicall_handler.ntp)
             pause_emu()
 
-    if section_hopping_control and address not in apicall_handler.hooks and address-0x7 not in apicall_handler.hooks and (
-            address < HOOK_ADDR or address > HOOK_ADDR + 0x1000): # address-0x7 corresponding RET
+    if section_hopping_control and address not in apicall_handler.hooks and address - 0x7 not in apicall_handler.hooks and (
+            address < HOOK_ADDR or address > HOOK_ADDR + 0x1000):  # address-0x7 corresponding RET
         allowed = False
         for start, end in allowed_addr_ranges:
             if start <= address <= end:
@@ -688,7 +666,7 @@ def hook_code(uc, address, size, user_data):
             curr_section_range = unpacker.get_section_range(sec_name)
             if curr_section_range:
                 allowed_addr_ranges += [unpacker.get_section_range(sec_name)]
-            unpacker.finish(uc, address, apicall_handler.ntp)
+            unpacker.dump(uc, apicall_handler.ntp)
             pause_emu()
 
     curr_section = unpacker.get_section(address)
@@ -705,7 +683,8 @@ def hook_code(uc, address, size, user_data):
             ret, esp = apicall_handler.apicall(apicall_handler.hooks[address], uc, esp, log_syscalls)
         else:
             args = struct.unpack("<IIIIII", uc.mem_read(esp + 4, 24))
-            print(f"Unimplemented API call at 0x{address:02x}: {api_call_name}, first 6 stack items: {list(map(hex, args))}")
+            print(f"Unimplemented API call at 0x{address:02x}: {api_call_name}, "
+                  f"first 6 stack items: {list(map(hex, args))}")
         if api_call_name not in api_calls:
             api_calls[api_call_name] = 1
         else:
@@ -782,12 +761,12 @@ def emu():
         print_stats()
     except UcError as e:
         print(f"Error: {e}")
-        dump_image(mu, BASE_ADDR, virtualmemorysize, apicall_handler.ntp)
+        unpacker.dump(mu, apicall_handler.ntp)
         emulator_event.clear()
         shell.emu_started = False
         shell_event.set()
     finally:
-        unpacker.finish(mu, shell.address)
+        unpacker.dump(mu, apicall_handler.ntp)
         emulator_event.clear()
         shell.emu_started = False
         shell_event.set()
@@ -857,8 +836,6 @@ def setup_processinfo(mu):
         LIST_ENTRY_BASE + 24,
     )
 
-
-
     teb_payload = bytes(teb)
     peb_payload = bytes(peb)
 
@@ -868,14 +845,13 @@ def setup_processinfo(mu):
     kernelbase_payload = bytes(kernelbase_entry)
     kernel32_payload = bytes(kernel32_entry)
 
-
     mu.mem_map(TEB_BASE, align(0x5000))
     mu.mem_write(TEB_BASE, teb_payload)
     mu.mem_write(PEB_BASE, peb_payload)
     mu.mem_write(LDR_PTR, ldr_payload)
     mu.mem_write(LIST_ENTRY_BASE, ntdll_payload)
-    mu.mem_write(LIST_ENTRY_BASE+12, kernelbase_payload)
-    mu.mem_write(LIST_ENTRY_BASE+24, kernel32_payload)
+    mu.mem_write(LIST_ENTRY_BASE + 12, kernelbase_payload)
+    mu.mem_write(LIST_ENTRY_BASE + 24, kernel32_payload)
     mu.windows_tib = TEB_BASE
 
 
@@ -971,7 +947,6 @@ def init_uc():
     apicall_handler.add_hook(mu, "VirtualFree", "kernel32.dll", 0x755D0000 + 0x16700)
     apicall_handler.add_hook(mu, "LoadLibraryA", "kernel32.dll", 0x755D0000 + 0x157b0)
     apicall_handler.add_hook(mu, "GetProcAddress", "kernel32.dll", 0x755D0000 + 0x14ee0)
-
 
     # Add hooks
     mu.hook_add(UC_HOOK_CODE, hook_code)
