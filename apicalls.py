@@ -216,9 +216,14 @@ class WinApiCalls(object):
         log and print(f"LoadLibraryA: 0x{eip:02x} mod_name_ptr 0x{mod_name_ptr}: {mod_name}")
         uc.mem_write(esp + 4, struct.pack("<I", eip))
 
-        handle = self.base_addr + self.module_handle_offset
-        self.module_handle_offset += 1
-        self.module_handles[handle] = get_string(mod_name_ptr, uc)
+        try:
+            handle = self.module_handles[mod_name.lower()]
+            log and print("\tKnown library, re-using handle")
+        except KeyError:
+            log and print("\tUnknown library, creating new handle")
+            handle = self.base_addr + self.module_handle_offset
+            self.module_handle_offset += 1
+            self.module_handles[handle] = mod_name
         log and print(f"\tHandle: 0x{handle:02x}")
         return handle, esp + 4
 

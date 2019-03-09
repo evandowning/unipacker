@@ -656,7 +656,7 @@ def hook_code(uc, address, size, user_data):
     if section_hopping_control and address not in apicall_handler.hooks and address - 0x7 not in apicall_handler.hooks and (
             address < HOOK_ADDR or address > HOOK_ADDR + 0x1000):  # address-0x7 corresponding RET
         allowed = False
-        for start, end in allowed_addr_ranges:
+        for start, end in allowed_addr_ranges + apicall_handler.allocated_chunks:
             if start <= address <= end:
                 allowed = True
                 break
@@ -805,23 +805,32 @@ def setup_processinfo(mu):
         LDR_PTR,
     )
 
+    ntdll_handle = 0x77400000
+    apicall_handler.module_handles["ntdll.dll"] = ntdll_handle
+    apicall_handler.module_handles[ntdll_handle] = "ntdll.dll"
     ntdll_entry = LIST_ENTRY(
         LIST_ENTRY_BASE + 12,
         LIST_ENTRY_BASE + 24,
-        0x77400000,
+        ntdll_handle,
     )
 
+    kernelbase_handle = 0x73D00000
+    apicall_handler.module_handles["kernelbase.dll"] = kernelbase_handle
+    apicall_handler.module_handles[kernelbase_handle] = "kernelbase.dll"
     kernelbase_entry = LIST_ENTRY(
         LIST_ENTRY_BASE + 24,
         LIST_ENTRY_BASE + 0,
-        0x73D00000,
+        kernelbase_handle,
 
     )
 
+    kernel32_handle = 0x755D0000
+    apicall_handler.module_handles["kernel32.dll"] = kernel32_handle
+    apicall_handler.module_handles[kernel32_handle] = "kernel32.dll"
     kernel32_entry = LIST_ENTRY(
         LIST_ENTRY_BASE + 0,
         LIST_ENTRY_BASE + 12,
-        0x755D0000,
+        kernel32_handle,
     )
 
     ldr = PEB_LDR_DATA(
@@ -894,8 +903,6 @@ def init_uc():
     mu.mem_map(BASE_ADDR, align(virtualmemorysize + 0x3000, page_size=4096))
     mu.mem_write(BASE_ADDR, loaded)
 
-    setup_processinfo(mu)
-
     # Load DLLs
     load_dll(mu, "DLLs/KernelBase.dll", 0x73D00000)
     load_dll(mu, "DLLs/kernel32.dll", 0x755D0000)
@@ -952,6 +959,8 @@ def init_uc():
     mu.hook_add(UC_HOOK_CODE, hook_code)
     mu.hook_add(UC_HOOK_MEM_READ | UC_HOOK_MEM_WRITE | UC_HOOK_MEM_FETCH, hook_mem_access)
     mu.hook_add(UC_HOOK_MEM_READ_UNMAPPED | UC_HOOK_MEM_WRITE_UNMAPPED, hook_mem_invalid)
+
+    setup_processinfo(mu)
 
 
 def init_sample(show_fortune=True):
