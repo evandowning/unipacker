@@ -1,5 +1,5 @@
 import struct
-
+import collections
 import pefile
 from unicorn.x86_const import *
 
@@ -46,6 +46,7 @@ class WinApiCalls(object):
         self.next_heap_handle = self.hook_addr + 0x10000
         self.atn = atn
         self.ntp = ntp
+        self.dllname_to_functionlist = collections.OrderedDict()
 
     def apicall(self, name, uc, esp, log):
         return self.apicall_mapping[name](uc, esp, log)
@@ -206,6 +207,10 @@ class WinApiCalls(object):
             print(f"\x1b[31mPending breakpoint attached for new dynamic import {proc_name} at 0x{hook_addr:02x}\x1b[0m")
             self.breakpoints.add(hook_addr)
             self.pending_breakpoints.remove(proc_name)
+
+        if module_name is not "?":
+            self.dllname_to_functionlist[module_name].append((proc_name, hook_addr))
+
         uc.mem_write(esp + 8, struct.pack("<I", eip))
         return hook_addr, esp + 8
 
@@ -219,6 +224,9 @@ class WinApiCalls(object):
         handle = self.base_addr + self.module_handle_offset
         self.module_handle_offset += 1
         self.module_handles[handle] = get_string(mod_name_ptr, uc)
+
+        self.dllname_to_functionlist[mod_name] = []
+
         log and print(f"\tHandle: 0x{handle:02x}")
         return handle, esp + 4
 
