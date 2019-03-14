@@ -146,6 +146,9 @@ class ImageDump(object):
         print("Fixing Memory Protection of Sections")
         self.fix_section_mem_protection(pe, ntp)
 
+        # Set protection of last section to rwx, as it includes the import table
+        self.set_protections(pe.sections[-1], (True, True, True))
+
         print("Fixing Imports...")
         pe = self.fix_imports(uc, pe, dllname_to_functionlist)
 
