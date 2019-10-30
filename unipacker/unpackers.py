@@ -26,8 +26,12 @@ class DefaultUnpacker(object):
         self.allowed_addr_ranges = []
         self.virtualmemorysize = None
 
-        self.startaddr = self.get_entrypoint()
-        self.endaddr = self.get_tail_jump()
+        if sample.interactive:
+            self.startaddr = self.get_entrypoint()
+            self.endaddr = self.get_tail_jump()
+        else:
+            self.startaddr = None
+            self.endaddr = sys.maxsize
 
     def get_tail_jump(self):
         while True:

@@ -22,7 +22,7 @@ from unipacker.utils import merge, align, convert_to_string, InvalidPEFile, prin
 
 class Sample(object):
 
-    def __init__(self, path, auto_default_unpacker=True):
+    def __init__(self, path, auto_default_unpacker=True, interactive=True):
         self.path = path
         self.init_headers()
         self.imports = set()
@@ -46,6 +46,7 @@ class Sample(object):
 
         # self.init_headers()
 
+        self.interactive = interactive
         self.unpacker, self.yara_matches = get_unpacker(self, auto_default_unpacker)
 
     def init_headers(self):
@@ -67,14 +68,14 @@ class Sample(object):
             for root, dirs, files in os.walk(path):
                 for file in files:
                     try:
-                        sample = Sample(os.path.join(root, file), auto_default_unpacker)
+                        sample = Sample(os.path.join(root, file), auto_default_unpacker, interactive)
                     except InvalidPEFile as e:
                         print(f"Could not initialize {file}: {e}")
                         continue
                     yield sample
         else:
             try:
-                sample = Sample(path, auto_default_unpacker=False)
+                sample = Sample(path, auto_default_unpacker=False, interactive=interactive)
             except InvalidPEFile as e:
                 print(f"Could not initialize {path}: {e}")
                 return
