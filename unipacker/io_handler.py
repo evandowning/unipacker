@@ -32,18 +32,22 @@ class IOHandler(object):
             client = SimpleClient(event)
             heartbeat = RepeatedTimer(120, print, "- still running -", file=sys.stderr)
 
+            # Initialize emulator
             print('Initializing engine: {0}'.format(time.time()))
             engine = UnpackerEngine(sample)
             engine.register_client(client)
+
             heartbeat.start()
-            print('Starting engine: {0}'.format(time.time()))
+
             # Start thread & timeout (seconds)
+            print('Starting engine: {0}'.format(time.time()))
             threading.Thread(target=engine.emu, args=(10,)).start()
 
             event.wait()
 
         finally:
             print('Finished: {0}'.format(time.time()))
+
             if heartbeat is not None:
                 heartbeat.stop()
             if engine is not None:
