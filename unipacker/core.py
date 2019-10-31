@@ -287,7 +287,7 @@ class UnpackerEngine(object):
                 self.uc.emu_stop()
                 return
 
-    def emu(self):
+    def emu(self,timeout):
         try:
             for client in self.clients:
                 client.emu_started()
@@ -299,7 +299,7 @@ class UnpackerEngine(object):
                 print(f"Emulation starting. Bounds: "
                       f"from {hex(self.sample.unpacker.startaddr)} to {hex(self.sample.unpacker.endaddr)}")
             # Start emulation from self.sample.unpacker.startaddr
-            self.uc.emu_start(self.sample.unpacker.startaddr, sys.maxsize)
+            self.uc.emu_start(self.sample.unpacker.startaddr, sys.maxsize, timeout=timeout*UC_SECOND_SCALE)
         except UcError as e:
             print(f"Error: {e}")
         finally:
