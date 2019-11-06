@@ -30,9 +30,10 @@ def _main():
 
             # Process and reset contents
             if line == '=================================================\n':
-                if (content != '') and (process(content) == True):
+                if (sample != '') and (content != '') and (process(content) == True):
                     sys.stdout.write('{0}\n'.format(sample))
                 content = ''
+                sample = ''
             else:
                 content += line
 
