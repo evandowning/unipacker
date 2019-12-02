@@ -17,6 +17,5 @@ while read LINE; do
     echo "$oldpath -> $newpath/$LINE"
 
     mkdir -p $newpath
-#   cp $oldpath $newpath/$LINE
-    break
+    cp $oldpath $newpath/$LINE
 done < "$fn"
