@@ -31,9 +31,12 @@ def _main():
             sys.stderr.write('{0} does not exist\n'.format(fn))
             continue
 
-        samples = list()
-        samples.extend(Sample.get_samples(fn, interactive=False))
-        IOHandler(samples, folder, False)
+        try:
+            samples = list()
+            samples.extend(Sample.get_samples(fn, interactive=False))
+            IOHandler(samples, folder, False)
+        except Exception as e:
+            sys.stderr.write('auto.py Exception: {0}\n'.format(str(e)))
 
         sys.stdout.write('=================================================\n')
         sys.stdout.write('=================================================\n')
